@@ -7,17 +7,18 @@
 #define TEST_SIZE 1000000
 #define TEST_EPS 1e-2
 
-typedef struct Simulation {
+typedef struct {
     float asset_corr; // rho
     float cut_off; // c
     float EAD;
     float LGD;
     int pf_size; // m
     int n_sims;   
+} Config;
 
-    // results
-    float* L_PF; 
-} Simulation;
+typedef struct {
+    float* L_PF;
+} Result;
 
 float norm_rand() {
     // transform uniform distributed random number to normal distributed
@@ -25,7 +26,7 @@ float norm_rand() {
     float u1 = (float)rand() / (float)RAND_MAX;
     float u2 = (float)rand() / (float)RAND_MAX;
 
-    // actually we could compute 2 normal distributed numbers from u1 and u2
+    // actually we can compute 2 normal distributed numbers from u1 and u2
     // but we only need one here. Caching the other one probably doesn't bring a performance boost.
     return sqrtf(-2.0f*logf(u1)) * cos(2*M_PI*u2);
 }
@@ -48,36 +49,38 @@ void test_random_normal_distribution() {
     assert(fabsf(std-1) < TEST_EPS);
 }
 
-void simulate(Simulation* sim) {
+Result simulate(Config config) {
     srand(time(NULL));
+    
+    Result result;
+    result.L_PF = calloc(config.n_sims, sizeof(float));
 
-    for (int i = 0; i < sim->n_sims; i++) {
-        sim->L_PF[i] = 0.0;
+    for (int i = 0; i < config.n_sims; i++) {
         float y = norm_rand();
-        for (int j = 0; j < sim->pf_size; j++) {
+        for (int j = 0; j < config.pf_size; j++) {
             float ui = norm_rand();
-            float r = sqrtf(sim->asset_corr)*y + sqrtf(1-sim->asset_corr)*ui;
-            if (r <= sim->cut_off) {
-                sim->L_PF[i] += sim->EAD*sim->LGD;
+            float r = sqrtf(config.asset_corr)*y + sqrtf(1-config.asset_corr)*ui;
+            if (r <= config.cut_off) {
+                result.L_PF[i] += config.EAD*config.LGD;
             }
         }
     }
+    return result;
 }
 
 int main() {
-    Simulation sim;
-    sim.asset_corr = 0.05;
-    sim.cut_off = -2.0;
-    sim.EAD = 1.0;
-    sim.LGD = 0.6;
-    sim.pf_size = 100;
-    sim.n_sims = 1000;
-    sim.L_PF = malloc(sizeof(float)*sim.n_sims);
+    Config config;
+    config.asset_corr = 0.05;
+    config.cut_off = -2.0;
+    config.EAD = 1.0;
+    config.LGD = 0.6;
+    config.pf_size = 100;
+    config.n_sims = 10000;
 
-    simulate(&sim);
-    for (int i = 0; i < sim.n_sims; i++) {
-        printf("[%d] L_PF=%.4f\n", i+1, sim.L_PF[i]);
+    Result result = simulate(config);
+    for (int i = 0; i < 10; i++) {
+        printf("[%d] L_PF=%.4f\n", i+1, result.L_PF[i]);
     }
 
-    free(sim.L_PF);
+    free(result.L_PF);
 }
