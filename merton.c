@@ -3,6 +3,7 @@
 #include <time.h>
 #include <math.h>
 #include <assert.h>
+#include <time.h>
 
 #define TEST_SIZE 1000000
 #define TEST_EPS 1e-2
@@ -17,6 +18,7 @@ typedef struct {
 } Config;
 
 typedef struct {
+    float ms;
     float* L_PF;
 } Result;
 
@@ -51,6 +53,8 @@ void test_random_normal_distribution() {
 
 Result simulate(Config config) {
     srand(time(NULL));
+
+    time_t now = clock();
     
     Result result;
     result.L_PF = calloc(config.n_sims, sizeof(float));
@@ -65,6 +69,8 @@ Result simulate(Config config) {
             }
         }
     }
+
+    result.ms = ((float)(clock()-now) / CLOCKS_PER_SEC) * 1000.0;
     return result;
 }
 
@@ -75,12 +81,13 @@ int main() {
     config.EAD = 1.0;
     config.LGD = 0.6;
     config.pf_size = 100;
-    config.n_sims = 10000;
+    config.n_sims = 1000000;
 
     Result result = simulate(config);
     for (int i = 0; i < 10; i++) {
         printf("[%d] L_PF=%.4f\n", i+1, result.L_PF[i]);
     }
+    printf("ms: %f\n", result.ms);
 
     free(result.L_PF);
 }
