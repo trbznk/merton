@@ -19,7 +19,7 @@ typedef struct {
     float ms;
     float* L_PF;
     float* LR_PF;
-    int pf_size;
+    int portfolio_size;
 } Result;
 
 typedef struct {
@@ -68,9 +68,9 @@ float erf_inv(float x) {
     w = - logf((1.0f-x)*(1.0f+x));
     if ( w < 5.000000f ) {
         w = w - 2.500000f;
-        p= 2.81022636e-08f;
-        p= 3.43273939e-07f + p*w;
-        p= -3.5233877e-06f + p*w;
+        p = 2.81022636e-08f;
+        p = 3.43273939e-07f + p*w;
+        p = -3.5233877e-06f + p*w;
         p = -4.39150654e-06f + p*w;
         p = 0.00021858087f + p*w;
         p = -0.00125372503f + p*w;
@@ -111,7 +111,7 @@ Portfolio read_csv(char* path) {
     float c3;
 
     char line_buffer[1024];
-    // skipt first row
+    // skip first row
     fgets(line_buffer, sizeof(line_buffer), f);
     while (fscanf(f, "%*d,%f,%f,%f", &c1, &c2, &c3) != EOF) {
         pf.size++;
@@ -153,25 +153,24 @@ Result simulate(Config config) {
     }
 
     result.ms = ((float)(clock()-now) / CLOCKS_PER_SEC) * 1000.0;
-    result.pf_size = pf.size;
+    result.portfolio_size = pf.size;
     return result;
 }
 
 int main() {
-    printf("%f\n", norm_ppf(0.004));
-    // Config config = {
-    //     .path = "./example_portfolio.csv",
-    //     .asset_corr = 0.05,
-    //     .n_sims = 10000
-    // };
+    Config config = {
+        .path = "./example_portfolio.csv",
+        .asset_corr = 0.05,
+        .n_sims = 10000
+    };
 
-    // Result result = simulate(config);
-    // for (int i = 0; i < 10; i++) {
-    //     printf("[%d] L_PF=%.4f, LR_PF=%.4f\n", i+1, result.L_PF[i], result.LR_PF[i]);
-    // }
-    // printf("ms: %f\n", result.ms);
+    Result result = simulate(config);
+    for (int i = 0; i < 25; i++) {
+        printf("[%d] L_PF=%.4f, LR_PF=%.4f\n", i+1, result.L_PF[i], result.LR_PF[i]);
+    }
+    printf("ms: %f\n", result.ms);
 
-    // free(result.L_PF);
+    free(result.L_PF);
 
-    // return 0;
+    return 0;
 }
