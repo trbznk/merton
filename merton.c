@@ -11,23 +11,30 @@
 typedef struct {
     char path[1024];
 
-    float asset_corr; // rho
-    int n_sims;   
+    float rho;
+    size_t n_sims;   
 } Config;
 
 typedef struct {
     float ms;
     float* L_PF;
     float* LR_PF;
-    int portfolio_size;
+    size_t portfolio_size;
 } Result;
 
 typedef struct {
     float* EAD;
     float* PD;
     float* LGD;
-    int size;
+    size_t size;
+    size_t capacity;
 } Portfolio;
+
+void free_portfolio(Portfolio* pf) {
+    free(pf->EAD);
+    free(pf->PD);
+    free(pf->LGD);
+} 
 
 float norm_rand() {
     // transform uniform distributed random number to normal distributed
@@ -38,24 +45,6 @@ float norm_rand() {
     // actually we can compute 2 normal distributed numbers from u1 and u2
     // but we only need one here. Caching the other one probably doesn't bring a performance boost.
     return sqrtf(-2.0f*logf(u1)) * cos(2*M_PI*u2);
-}
-
-void test_random_normal_distribution() {
-    float X[TEST_SIZE];
-    float s = 0;
-    for (int i = 0; i < TEST_SIZE; i++) {
-        X[i] = norm_rand();
-        s = s + X[i];
-    }
-    float mean = s/TEST_SIZE;
-    float std = 0;
-    for (int i = 0; i < TEST_SIZE; i++) {
-        std = std + powf(X[i]-mean, 2);
-    }
-    std = sqrtf(std/TEST_SIZE);
-
-    assert(fabsf(mean) < TEST_EPS);
-    assert(fabsf(std-1) < TEST_EPS);
 }
 
 float norm_cdf(float x) {
@@ -100,11 +89,7 @@ Portfolio read_csv(char* path) {
     FILE* f;
     f = fopen(path, "r");
 
-    Portfolio pf;
-    pf.EAD = malloc(sizeof(float));
-    pf.PD = malloc(sizeof(float));
-    pf.LGD = malloc(sizeof(float));
-    pf.size = 0;
+    Portfolio pf = {0};
 
     float c1;
     float c2;
@@ -113,14 +98,23 @@ Portfolio read_csv(char* path) {
     char line_buffer[1024];
     // skip first row
     fgets(line_buffer, sizeof(line_buffer), f);
+    const size_t prealloc_items = 10;
     while (fscanf(f, "%*d,%f,%f,%f", &c1, &c2, &c3) != EOF) {
+        if (pf.capacity == 0) {
+            pf.EAD = malloc(sizeof(float)*prealloc_items);
+            pf.PD = malloc(sizeof(float)*prealloc_items);
+            pf.LGD = malloc(sizeof(float)*prealloc_items);
+            pf.capacity += prealloc_items;
+        } else if (pf.capacity == pf.size) {
+            pf.EAD = realloc(pf.EAD, (pf.size+prealloc_items)*sizeof(float));
+            pf.PD = realloc(pf.PD, (pf.size+prealloc_items)*sizeof(float));
+            pf.LGD = realloc(pf.LGD, (pf.size+prealloc_items)*sizeof(float));
+            pf.capacity += prealloc_items;
+        }
+        pf.EAD[pf.size] = c1;
+        pf.PD[pf.size] = c2;
+        pf.LGD[pf.size] = c3;
         pf.size++;
-        pf.EAD = realloc(pf.EAD, sizeof(float)*pf.size);
-        pf.PD = realloc(pf.PD, sizeof(float)*pf.size);
-        pf.LGD = realloc(pf.LGD, sizeof(float)*pf.size);
-        pf.EAD[pf.size-1] = c1;
-        pf.PD[pf.size-1] = c2;
-        pf.LGD[pf.size-1] = c3;
     }
     fclose(f);
 
@@ -133,18 +127,21 @@ Result simulate(Config config) {
     time_t now = clock();
     
     Portfolio pf = read_csv(config.path);
+
     Result result;
     result.L_PF = calloc(config.n_sims, sizeof(float));
     result.LR_PF = calloc(config.n_sims, sizeof(float));
 
-    for (int i = 0; i < config.n_sims; i++) {
+    for (size_t i = 0; i < config.n_sims; i++) {
         float y = norm_rand();
         float pf_EAD = 0.0;
-        for (int j = 0; j < pf.size; j++) {
+        for (size_t j = 0; j < pf.size; j++) {
             float ui = norm_rand();
-            float r = sqrtf(config.asset_corr)*y + sqrtf(1-config.asset_corr)*ui;
+            float r = sqrtf(config.rho)*y + sqrtf(1-config.rho)*ui;
             float cut_off = norm_ppf(pf.PD[j]);
-            if (r <= cut_off) {
+            
+            // this condition is true if the asset defaults
+            if (r < cut_off) {
                 result.L_PF[i] += pf.EAD[j]*pf.LGD[j];
             }
             pf_EAD = pf_EAD + pf.EAD[j];
@@ -154,18 +151,53 @@ Result simulate(Config config) {
 
     result.ms = ((float)(clock()-now) / CLOCKS_PER_SEC) * 1000.0;
     result.portfolio_size = pf.size;
+
+    free_portfolio(&pf);
     return result;
 }
 
+void test_random_normal_distribution() {
+    float X[TEST_SIZE];
+    float s = 0;
+    for (int i = 0; i < TEST_SIZE; i++) {
+        X[i] = norm_rand();
+        s = s + X[i];
+    }
+    float mean = s/TEST_SIZE;
+    float std = 0;
+    for (int i = 0; i < TEST_SIZE; i++) {
+        std = std + powf(X[i]-mean, 2);
+    }
+    std = sqrtf(std/TEST_SIZE);
+
+    assert(fabsf(mean) < TEST_EPS);
+    assert(fabsf(std-1) < TEST_EPS);
+}
+
+void test_read_csv() {
+    Portfolio pf = read_csv("./example_portfolio.csv");
+    assert(pf.size == 80);
+    assert(pf.EAD[0] == 10000.0f);
+    assert(pf.EAD[79] == 10000.0f);
+    assert(pf.PD[0] == 0.0001f);
+    assert(pf.PD[79] == 0.0094f);
+    assert(pf.LGD[0] == 0.6f);
+    assert(pf.LGD[79] == 0.6f);
+    free_portfolio(&pf);
+}
+
 int main() {
+    test_random_normal_distribution();
+    test_read_csv();
+
     Config config = {
         .path = "./example_portfolio.csv",
-        .asset_corr = 0.05,
+        .rho = 0.05,
         .n_sims = 10000
     };
 
     Result result = simulate(config);
-    for (int i = 0; i < 25; i++) {
+    for (int i = 0; i < 10; i++) {
         printf("[%d] L_PF=%.4f, LR_PF=%.4f\n", i+1, result.L_PF[i], result.LR_PF[i]);
     }
     printf("ms: %f\n", result.ms);
