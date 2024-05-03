@@ -12,14 +12,18 @@ typedef struct {
     char path[1024];
 
     float rho;
-    size_t n_sims;   
+    size_t n_sims;
+    unsigned int seed;
 } Config;
 
 typedef struct {
     float ms;
     float* L_PF;
     float* LR_PF;
+    float exact_EL;
+    float EL;
     size_t portfolio_size;
+    size_t n_sims;
 } Result;
 
 typedef struct {
@@ -122,7 +126,7 @@ Portfolio read_csv(char* path) {
 }
 
 Result simulate(Config config) {
-    srand(time(NULL));
+    srand(config.seed);
 
     time_t now = clock();
     
@@ -131,6 +135,13 @@ Result simulate(Config config) {
     Result result;
     result.L_PF = calloc(config.n_sims, sizeof(float));
     result.LR_PF = calloc(config.n_sims, sizeof(float));
+    result.EL = 0.0f;
+    result.n_sims = config.n_sims;
+
+    result.exact_EL = 0.0f;
+    for (size_t i = 0; i < pf.size; i++) {
+        result.exact_EL = result.exact_EL + pf.EAD[i]*pf.LGD[i]*pf.PD[i];
+    }
 
     for (size_t i = 0; i < config.n_sims; i++) {
         float y = norm_rand();
@@ -147,6 +158,10 @@ Result simulate(Config config) {
             pf_EAD = pf_EAD + pf.EAD[j];
         }
         result.LR_PF[i] = result.L_PF[i] / pf_EAD;   
+    }
+
+    for (size_t i = 0; i < result.n_sims; i++) {
+        result.EL = result.EL + result.L_PF[i] / result.n_sims;
     }
 
     result.ms = ((float)(clock()-now) / CLOCKS_PER_SEC) * 1000.0;
@@ -177,8 +192,8 @@ void test_random_normal_distribution() {
 void test_read_csv() {
     Portfolio pf = read_csv("./example_portfolio.csv");
     assert(pf.size == 80);
-    assert(pf.EAD[0] == 10000.0f);
-    assert(pf.EAD[79] == 10000.0f);
+    assert(pf.EAD[0] == 10000000.0f);
+    assert(pf.EAD[79] == 10000000.0f);
     assert(pf.PD[0] == 0.0001f);
     assert(pf.PD[79] == 0.0094f);
     assert(pf.LGD[0] == 0.6f);
