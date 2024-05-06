@@ -22,6 +22,8 @@ typedef struct {
     float* LR_PF;
     float exact_EL;
     float EL;
+    float exact_UL;
+    float UL;
     size_t portfolio_size;
     size_t n_sims;
 } Result;
@@ -38,7 +40,7 @@ void free_portfolio(Portfolio* pf) {
     free(pf->EAD);
     free(pf->PD);
     free(pf->LGD);
-} 
+}
 
 float norm_rand() {
     // transform uniform distributed random number to normal distributed
@@ -136,12 +138,16 @@ Result simulate(Config config) {
     result.L_PF = calloc(config.n_sims, sizeof(float));
     result.LR_PF = calloc(config.n_sims, sizeof(float));
     result.EL = 0.0f;
+    result.UL = 0.0f;
     result.n_sims = config.n_sims;
 
     result.exact_EL = 0.0f;
+    result.exact_UL = 0.0f;
     for (size_t i = 0; i < pf.size; i++) {
         result.exact_EL = result.exact_EL + pf.EAD[i]*pf.LGD[i]*pf.PD[i];
+        result.exact_UL = result.exact_UL + powf(pf.EAD[i]*pf.LGD[i]*sqrtf(pf.PD[i] * (1-pf.PD[i])), 2);
     }
+    result.exact_UL = sqrtf(result.exact_UL);
 
     for (size_t i = 0; i < config.n_sims; i++) {
         float y = norm_rand();
@@ -160,9 +166,20 @@ Result simulate(Config config) {
         result.LR_PF[i] = result.L_PF[i] / pf_EAD;   
     }
 
+    // compute EL
     for (size_t i = 0; i < result.n_sims; i++) {
         result.EL = result.EL + result.L_PF[i] / result.n_sims;
     }
+
+    // compute UL
+    float mean_l_pf = 0.0;
+    for (size_t i = 0; i < result.n_sims; i++) {
+        mean_l_pf += result.L_PF[i] / result.n_sims;
+    }
+    for (size_t i = 0; i < result.n_sims; i++) {
+        result.UL = result.UL + powf(mean_l_pf-result.L_PF[i], 2) / result.n_sims;
+    }
+    result.UL = sqrtf(result.UL);
 
     result.ms = ((float)(clock()-now) / CLOCKS_PER_SEC) * 1000.0;
     result.portfolio_size = pf.size;
