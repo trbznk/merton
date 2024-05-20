@@ -44,7 +44,7 @@ void free_portfolio(Portfolio* pf) {
 
 float norm_rand() {
     // transform uniform distributed random number to normal distributed
-    // with Box-Muller transformation - https://en.wikipedia.org/wiki/Box–Muller_transform
+    // with Box-Muller transformation - https://en.wikipedia.org/wiki/Box-Muller_transform
     float u1 = (float)rand() / (float)RAND_MAX;
     float u2 = (float)rand() / (float)RAND_MAX;
 
